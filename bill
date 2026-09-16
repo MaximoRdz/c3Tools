@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+
+START_DATE="$(date +%Y-%m-01)"
+END_DATE="$(date +%Y-%m-%d)"
+TARGET_USER="$USER"
+
+while getopts "u:s:e:h" opt; do
+    case "$opt" in
+        u) TARGET_USER="$OPTARG" ;;
+        s) START_DATE="$OPTARG" ;;
+        e) END_DATE="$OPTARG" ;;
+        h|\?)
+            echo "Usage: bill [-u USER] [-s START_DATE] [-e END_DATE]"
+            echo "  -u  Slurm username (default: current user '$USER')"
+            echo "  -s  Start date (YYYY-MM-DD) [default: $START_DATE]"
+            echo "  -e  End date (YYYY-MM-DD) [default: $END_DATE]"
+            exit 1
+            ;;
+    esac
+done
+
+ACCOUNT_OUTPUT=$(my_account -u "$TARGET_USER" -m 2>/dev/null || true)
+
+if [[ -z "$ACCOUNT_OUTPUT" ]]; then
+    echo "No job history or accounting data found for user '$TARGET_USER'."
+    exit 0
+fi
+
+ACCOUNT=$(awk '$4 == "cpu" {print $2; exit}' <<< "$ACCOUNT_OUTPUT")
+
+if [[ -z "$ACCOUNT" ]]; then
+    echo "Error: Could not determine account for user '$TARGET_USER'." >&2
+    exit 1
+fi
+
+USER_TYPE="${ACCOUNT%%-*}"
+USER_TYPE="${USER_TYPE^^}"
+
+case "$USER_TYPE" in
+    UC3M_A0)
+        RATE_CPU="0.005"
+        RATE_GPU="0.533"
+        ;;
+    UC3M_A)
+        RATE_CPU="0.008"
+        RATE_GPU="0.800"
+        ;;
+    OPI_B)
+        RATE_CPU="0.020"
+        RATE_GPU="1.400"
+        ;;
+    EXT_C)
+        RATE_CPU="0.030"
+        RATE_GPU="1.700"
+        ;;
+    UC3M_ART60)
+        RATE_CPU="0.021"
+        RATE_GPU="1.190"
+        ;;
+    *)
+        echo "Error: Unknown billing tier '$USER_TYPE' from account '$ACCOUNT'." >&2
+        exit 1
+        ;;
+esac
+
+echo "================================================="
+echo "   UC3M C3 Supercomputer - Expense Calculator   "
+echo "================================================="
+echo "User:        $TARGET_USER"
+echo "Account:     $ACCOUNT"
+echo "Tier:        $USER_TYPE (€$RATE_CPU/CPU-h | €$RATE_GPU/GPU-h)"
+echo "Period:      $START_DATE to $END_DATE"
+echo "-------------------------------------------------"
+
+awk -v rate_cpu="$RATE_CPU" -v rate_gpu="$RATE_GPU" '
+BEGIN {
+    cpu_hours = 0
+    gpu_hours = 0
+}
+{
+    if ($4 == "cpu") {
+        cpu_hours = $5
+    } else if ($4 == "gres/gpu") {
+        gpu_hours = $5
+    }
+}
+END {
+    cost_cpu = cpu_hours * rate_cpu
+    cost_gpu = gpu_hours * rate_gpu
+    total_cost = cost_cpu + cost_gpu
+
+    printf "CPU Usage:   %10.2f hours  =>  %8.2f €\n", cpu_hours, cost_cpu
+    printf "GPU Usage:   %10.2f hours  =>  %8.2f €\n", gpu_hours, cost_gpu
+    printf "-------------------------------------------------\n"
+    printf "TOTAL ESTIMATED EXPENSE:       %8.2f €\n", total_cost
+    printf "=================================================\n"
+}
+' <<< "$ACCOUNT_OUTPUT"
