@@ -14,7 +14,8 @@ while getopts "u:s:e:h" opt; do
             echo "  -u  Slurm username (default: current user '$USER')"
             echo "  -s  Start date (YYYY-MM-DD) [default: $START_DATE]"
             echo "  -e  End date (YYYY-MM-DD) [default: $END_DATE]"
-            exit 1
+            echo "  -h  Show this help message"
+            exit 0
             ;;
     esac
 done

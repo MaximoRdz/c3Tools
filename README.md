@@ -10,7 +10,7 @@ chmod +x install.sh
 source ~/.bashrc
 
 
-bill -v && bill
+bill -h && bill
 ```
 
 ## Example Output
